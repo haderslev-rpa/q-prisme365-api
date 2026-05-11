@@ -1,8 +1,5 @@
 from api_client import get
 
-# ------------------------------------------------------------
-# DTO MAPPING
-# ------------------------------------------------------------
 def map_ean(item):
     return {
         "ean": item.get("EANNumber"),
@@ -11,13 +8,9 @@ def map_ean(item):
     }
 
 
-# ------------------------------------------------------------
-# GET EAN
-# ------------------------------------------------------------
-def get_ean(ean: str = None, raw: bool = False):
+def get_ean(ean=None, raw=False):
     endpoint = "OMOperationUnitEANNumDatasEntity_FUJ"
 
-    # filter hvis EAN angivet
     if ean:
         endpoint += f"?$filter=EANNumber eq '{ean}'"
 

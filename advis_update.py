@@ -1,9 +1,6 @@
 from api_client import patch
 
-# ------------------------------------------------------------
-# BUILD BODY (fra dit diagram)
-# ------------------------------------------------------------
-def build_advis_body(recid: int, handled: bool):
+def build_advis_body(recid, handled):
     return {
         "dataAreaId": "had",
         "Handled": "Yes" if handled else "No",
@@ -11,19 +8,28 @@ def build_advis_body(recid: int, handled: bool):
     }
 
 
-# ------------------------------------------------------------
-# UPDATE ADVIS
-# ------------------------------------------------------------
-def update_advis(recid: int, handled: bool):
+def update_advis(recid: int, handled: bool) -> bool:
+    """
+      Args:
+        recid (int):
+            RecId på adviset (unik ID fra Prisme)
+
+        handled (bool):
+            True  = marker som behandlet - Skriv fx handled=True (man kan nøjes med blot at skrive True)
+            False = marker som ikke behandlet
+
+    Returns:
+        bool:
+            True hvis opdatering lykkedes
+            False hvis fejl
+    """
+
     endpoint = f"CustAdviceDataEntities_FUJ(RecIdLoc={recid},dataAreaId='had')"
 
-    body = build_advis_body(recid, handled)
+    body = {
+        "dataAreaId": "had",
+        "Handled": "Yes" if handled else "No",
+        "RecIdLoc": recid
+    }
 
-    success = patch(endpoint, body)
-
-    if success:
-        print("✅ Advis opdateret")
-    else:
-        print("❌ Fejl ved opdatering")
-
-    return success
+    return patch(endpoint, body)

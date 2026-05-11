@@ -1,7 +1,8 @@
 from api_client import get
 
+
 # ------------------------------------------------------------
-# BUILD FILTER QUERY
+# BUILD FILTER QUERY (D365 kompatibel)
 # ------------------------------------------------------------
 def build_filter(
     identification_number=None,
@@ -19,15 +20,10 @@ def build_filter(
         filters.append(f"IdentificationNumber eq '{identification_number}'")
 
     # ------------------------------------------------------------
-    # AdviceText (understøtter wildcard '*')
+    # AdviceText (beholder wildcard '*')
     # ------------------------------------------------------------
     if advice_text:
-        if "*" in advice_text:
-            # D365 bruger startswith i stedet
-            value = advice_text.replace("*", "")
-            filters.append(f"startswith(AdviceText,'{value}')")
-        else:
-            filters.append(f"AdviceText eq '{advice_text}'")
+        filters.append(f"AdviceText eq '{advice_text}'")
 
     # ------------------------------------------------------------
     # Handled (D365 NoYes enum)
@@ -46,21 +42,19 @@ def build_filter(
             filters.append(f"{key} eq '{val}'")
 
     # ------------------------------------------------------------
-    # Sammensæt query
+    # BUILD QUERY (vigtigt: $top først!)
     # ------------------------------------------------------------
-    query = ""
-
-    if filters:
-        query += "$filter=" + " and ".join(filters)
+    query_parts = []
 
     if top:
-        if query:
-            query += "&"
-        query += f"$top={top}"
+        query_parts.append(f"$top={top}")
 
-    # Prefix med '?'
-    if query:
-        return "?" + query
+    if filters:
+        filter_string = " and ".join(filters)
+        query_parts.append(f"$filter={filter_string}")
+
+    if query_parts:
+        return "?" + "&".join(query_parts)
 
     return ""
 
@@ -68,27 +62,32 @@ def build_filter(
 # ------------------------------------------------------------
 # GET ADVIS
 # ------------------------------------------------------------
-def get_advis(handled=None, extra_filters=None, raw=True):
+def get_advis(
+    identification_number=None,
+    advice_text=None,
+    handled=None,
+    extra_filters=None,
+    top=None,
+    raw=True
+):
     endpoint = "CustAdviceDataEntities_FUJ"
 
-    endpoint += build_filter(handled, extra_filters)
+    query = build_filter(
+        identification_number=identification_number,
+        advice_text=advice_text,
+        handled=handled,
+        extra_filters=extra_filters,
+        top=top
+    )
+
+    endpoint += query
+
+    # ------------------------------------------------------------
+    # DEBUG (meget vigtigt!)
+    # ------------------------------------------------------------
+    print("\n--- BUILD ADVIS REQUEST ---")
+    print("Endpoint:", endpoint)
 
     data = get(endpoint)
-
-    if raw:
-        return data
-
-    # ------------------------------------------------------------
-    # EKSEMPEL PÅ DTO (kommenteret – du kan aktivere senere)
-    # ------------------------------------------------------------
-    # values = data.get("value", [])
-    # return [
-    #     {
-    #         "rec_id": x.get("RecId"),
-    #         "handled": x.get("Handled"),
-    #         "message": x.get("Message")
-    #     }
-    #     for x in values
-    # ]
 
     return data
