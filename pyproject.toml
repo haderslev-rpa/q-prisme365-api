@@ -1,5 +1,5 @@
 [project]
-name = "process-template"
+name = "q-PRISME365-API"
 version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "automation-server-client",
     "q-haderslev-vbo",
+    "requests>=2.31.0",
 ]
 
 [tool.uv.sources]
