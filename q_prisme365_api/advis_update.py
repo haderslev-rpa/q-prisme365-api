@@ -1,4 +1,4 @@
-from api_client import patch
+from q_prisme365_api.api_client import patch
 
 def build_advis_body(recid, handled):
     return {

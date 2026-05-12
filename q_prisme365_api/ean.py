@@ -1,4 +1,4 @@
-from api_client import get
+from q_prisme365_api.api_client import get
 
 def map_ean(item):
     return {

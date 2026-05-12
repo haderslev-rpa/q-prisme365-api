@@ -1,9 +1,9 @@
 from pprint import pprint
 
 # Importerer vores funktioner fra de andre filer
-from ean import get_ean
-from advis import get_advis
-from advis_update import update_advis
+from q_prisme365_api.ean import get_ean
+from q_prisme365_api.advis import get_advis
+from q_prisme365_api.advis_update import update_advis
 
 """
 ============================================================
