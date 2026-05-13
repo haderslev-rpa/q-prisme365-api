@@ -23,7 +23,7 @@ def update_advis(recid: int, handled: bool) -> bool:
             True hvis opdatering lykkedes
             False hvis fejl
     """
-
+    recid = int(recid)  # ✅ TVING TIL INT (vigtigt)
     endpoint = f"CustAdviceDataEntities_FUJ(RecIdLoc={recid},dataAreaId='had')"
 
     body = {
