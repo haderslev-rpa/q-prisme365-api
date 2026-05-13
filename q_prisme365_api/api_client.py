@@ -103,7 +103,8 @@ def get_token():
 
 
 def get(endpoint: str):
-    """GET request til API."""
+    """GET request til API (returnerer rækker, ikke metadata)."""
+
     print("\n[get] Kaldes med endpoint:", endpoint)
 
     token = get_token()
@@ -126,7 +127,22 @@ def get(endpoint: str):
             f"GET-fejl {response.status_code}: {response.text}"
         )
 
-    return response.json()
+    data = response.json()  # dict (key/value data)
+
+    # -------------------------------------------------
+    # Udpak OData-respons (vigtigt)
+    # -------------------------------------------------
+    if isinstance(data, dict) and "value" in data:
+        value = data["value"]
+
+        if isinstance(value, list):
+            print("[get] OData 'value' fundet – returnerer rækker")
+            return value  # liste (ordnet samling)
+
+    # Fallback: returnér som det er
+    print("[get] Ingen 'value' – returnerer rå data")
+    return data
+
 
 
 def patch(endpoint: str, body: dict):
