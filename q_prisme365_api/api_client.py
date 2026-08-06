@@ -15,7 +15,7 @@ AutomationServer.from_environment()  # klassemetode (funktion på klasse)
 # Hent credential
 # -------------------------------------------------
 print("Henter credential: API_PRISME365")
-credential = Credential.get_credential("API_PRISME365")  # objekt (konkret instans)
+credential = Credential.get_credential("API_PRISME365_1")  # objekt (konkret instans)
 
 print("Credential hentet OK")
 print("Credential data (uden secret):")
