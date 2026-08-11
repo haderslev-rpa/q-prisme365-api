@@ -653,7 +653,7 @@ def _execute_plan(
             f"Fundet: {final_total}."
         )
 
-    return {
+    result = {
         "success": True,
         "strategy": plan.strategi,
         "header_reference": (
@@ -677,6 +677,82 @@ def _execute_plan(
         "deleted_rec_ids": deleted_ids,
         "final_lines": final_lines,
     }
+
+    _print_result_summary(
+        result
+    )
+
+    return result
+
+def _print_result_summary(
+    result: dict[str, Any],
+) -> None:
+    """Udskriv et kort konteringsresultat."""
+
+    print()
+    print("=" * 70)
+    print("KONTERING GENNEMFØRT")
+    print("=" * 70)
+    print(
+        "Strategi:",
+        result["strategy"],
+    )
+    print(
+        "Antal linjer før:",
+        result["existing_count_before"],
+    )
+    print(
+        "Antal linjer efter:",
+        result["final_count"],
+    )
+    print(
+        "Samlet bruttobeløb:",
+        result["total_gross_amount"],
+    )
+    print(
+        "Opdaterede linjer:",
+        len(
+            result["updated_rec_ids"]
+        ),
+    )
+    print(
+        "Allerede korrekte linjer:",
+        len(
+            result["skipped_rec_ids"]
+        ),
+    )
+    print(
+        "Afviste kandidatlinjer:",
+        len(
+            result["rejected_rec_ids"]
+        ),
+    )
+    print(
+        "Oprettede linjer:",
+        len(
+            result["created_rec_ids"]
+        ),
+    )
+    print(
+        "Slettede linjer:",
+        len(
+            result["deleted_rec_ids"]
+        ),
+    )
+
+    rejected_ids = result.get(
+        "rejected_rec_ids",
+        [],
+    )
+
+    if rejected_ids:
+        print(
+            "Afviste RecIdLoc-værdier:",
+            rejected_ids,
+        )
+
+    print("=" * 70)
+    print()
 
 
 def _update_line_with_retry(

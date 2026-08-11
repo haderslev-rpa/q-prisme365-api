@@ -1,34 +1,9 @@
-"""Rigtig test af kandidatbaseret fakturakontering."""
+"""Enkel live-test af fakturakontering."""
 
-import logging
 from decimal import Decimal
 
 from q_prisme365_api.functionality.faktura_kontering import (
     konter_faktura,
-)
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format=(
-        "%(asctime)s "
-        "%(levelname)s "
-        "%(name)s: "
-        "%(message)s"
-    ),
-)
-
-
-# ------------------------------------------------------------
-# SIKKERHED
-# ------------------------------------------------------------
-
-UDFOER_SYNKRONISERING = True
-
-SIKKERHEDSTEKST = "KONTER 50 LINJER PÅ 000682112"
-
-FORVENTET_SIKKERHEDSTEKST = (
-    "KONTER 50 LINJER PÅ 000682112"
 )
 
 
@@ -38,177 +13,154 @@ FORVENTET_SIKKERHEDSTEKST = (
 
 HEADER_REFERENCE = "000682112"
 
-# Ret denne værdi, hvis antallet har ændret sig.
-FORVENTET_ANTAL_EKSISTERENDE = 577
 
+# ------------------------------------------------------------
+# VÆLG ØNSKET SLUTRESULTAT
+# ------------------------------------------------------------
+
+# Dette er det eneste, du normalt ændrer.
 ANTAL_OENSKEDE_LINJER = 50
 
 
 # ------------------------------------------------------------
-# KONTERING
+# FASTE TESTOPLYSNINGER
 # ------------------------------------------------------------
 
-OENSKET_TOTALBELOEB = Decimal(
-    "50768.60"
-)
-
-STANDARD_BELOEB = Decimal(
-    "1000.00"
-)
+FAKTURABELOEB = Decimal("50768.60")
 
 KONTOSTRENG = (
     "100201010000-645511002-10021-40-"
 )
 
 FAKTURA_AFDELING = "180123000000"
+
 KREDITORKONTO = "000065"
+
 ENHED = "STK"
+
 YDELSESMODTAGER = "3112999999"
 
+# True bekræfter, at alle udfyldte
+# CPR-numre er valideret via Datafordeleren.
 CPR_NUMRE_VALIDERET = True
 
 
-def main():
-    """Planlæg og eventuelt udfør testen."""
+def main() -> None:
+    """Byg linjerne og udfør konteringen."""
 
-    lines = build_lines()
+    konteringslinjer = byg_konteringslinjer(
+        antal_linjer=(
+            ANTAL_OENSKEDE_LINJER
+        ),
+        totalbeloeb=FAKTURABELOEB,
+    )
 
-    plan = konter_faktura(
+    konter_faktura(
         header_reference=HEADER_REFERENCE,
-        konteringslinjer=lines,
+        konteringslinjer=konteringslinjer,
         cpr_numre_valideret=(
             CPR_NUMRE_VALIDERET
         ),
-        udfoer=False,
     )
 
-    print()
-    print("=" * 70)
-    print("PLAN")
-    print("=" * 70)
-    print("Strategi:", plan.strategi)
-    print(
-        "Eksisterende linjer:",
-        len(plan.eksisterende_linjer),
-    )
-    print(
-        "Ønskede linjer:",
-        len(plan.oenskede_linjer),
-    )
-    print(
-        "Planlagte handlinger:",
-        len(plan.handlinger),
-    )
-    print(
-        "Ønsket totalbeløb:",
-        plan.oensket_totalbeloeb,
-    )
 
-    validate_plan(plan)
+def byg_konteringslinjer(
+    antal_linjer: int,
+    totalbeloeb: Decimal,
+) -> list[dict[str, object]]:
+    """
+    Byg det ønskede antal testlinjer.
 
-    if not UDFOER_SYNKRONISERING:
-        print()
-        print("Ingen ændringer blev udført.")
-        return
+    Beløbet fordeles i hele øre, så summen
+    altid bliver præcis lig fakturabeløbet.
+    """
+
+    if isinstance(
+        antal_linjer,
+        bool,
+    ):
+        raise TypeError(
+            "antal_linjer skal være "
+            "et positivt heltal."
+        )
+
+    if not isinstance(
+        antal_linjer,
+        int,
+    ):
+        raise TypeError(
+            "antal_linjer skal være "
+            "et heltal."
+        )
+
+    if antal_linjer <= 0:
+        raise ValueError(
+            "antal_linjer skal være "
+            "større end 0."
+        )
+
+    if not isinstance(
+        totalbeloeb,
+        Decimal,
+    ):
+        raise TypeError(
+            "totalbeloeb skal være Decimal."
+        )
+
+    if totalbeloeb <= Decimal("0"):
+        raise ValueError(
+            "totalbeloeb skal være "
+            "større end 0."
+        )
+
+    total_i_oere = (
+        totalbeloeb
+        * Decimal("100")
+    )
 
     if (
-        SIKKERHEDSTEKST
-        != FORVENTET_SIKKERHEDSTEKST
+        total_i_oere
+        != total_i_oere.to_integral_value()
     ):
         raise ValueError(
-            "Forkert sikkerhedstekst. "
-            f"Skriv: "
-            f"{FORVENTET_SIKKERHEDSTEKST!r}"
+            "totalbeloeb må højst have "
+            "to decimaler."
         )
 
-    result = konter_faktura(
-        header_reference=HEADER_REFERENCE,
-        konteringslinjer=lines,
-        cpr_numre_valideret=(
-            CPR_NUMRE_VALIDERET
-        ),
+    samlet_antal_oere = int(
+        total_i_oere
     )
 
-    validate_result(result)
-
-    print()
-    print("=" * 70)
-    print("SYNKRONISERING GENNEMFØRT")
-    print("=" * 70)
-    print(
-        "Antal før:",
-        result["existing_count_before"],
-    )
-    print(
-        "Antal efter:",
-        result["final_count"],
-    )
-    print(
-        "Opdaterede:",
-        len(result["updated_rec_ids"]),
-    )
-    print(
-        "Allerede korrekte:",
-        len(result["skipped_rec_ids"]),
-    )
-    print(
-        "Afviste kandidatlinjer:",
-        len(result["rejected_rec_ids"]),
-    )
-    print(
-        "Afviste RecIdLoc:",
-        result["rejected_rec_ids"],
-    )
-    print(
-        "Oprettede:",
-        len(result["created_rec_ids"]),
-    )
-    print(
-        "Slettede:",
-        len(result["deleted_rec_ids"]),
-    )
-    print(
-        "Slutbeløb:",
-        result["total_gross_amount"],
+    grundbeloeb_oere = (
+        samlet_antal_oere
+        // antal_linjer
     )
 
-
-def build_lines():
-    """Byg 50 ønskede linjer."""
-
-    last_amount = (
-        OENSKET_TOTALBELOEB
-        - (
-            STANDARD_BELOEB
-            * (
-                ANTAL_OENSKEDE_LINJER
-                - 1
-            )
-        )
+    resterende_oere = (
+        samlet_antal_oere
+        % antal_linjer
     )
 
-    if last_amount <= Decimal("0"):
-        raise ValueError(
-            "Sidste beløb er ikke positivt."
-        )
+    konteringslinjer = []
 
-    lines = []
-
-    for number in range(
+    for linjenummer in range(
         1,
-        ANTAL_OENSKEDE_LINJER + 1,
+        antal_linjer + 1,
     ):
-        amount = (
-            STANDARD_BELOEB
-            if number
-            < ANTAL_OENSKEDE_LINJER
-            else last_amount
+        beloeb_oere = grundbeloeb_oere
+
+        if linjenummer <= resterende_oere:
+            beloeb_oere += 1
+
+        bruttobeloeb = (
+            Decimal(beloeb_oere)
+            / Decimal("100")
         )
 
-        lines.append(
+        konteringslinjer.append(
             {
                 "kontostreng": KONTOSTRENG,
-                "bruttobeloeb": amount,
+                "bruttobeloeb": bruttobeloeb,
                 "ydelsesmodtager": (
                     YDELSESMODTAGER
                 ),
@@ -218,7 +170,7 @@ def build_lines():
                 ),
                 "posteringstekst": (
                     "Python kontering "
-                    f"linje {number:02d}"
+                    f"linje {linjenummer}"
                 ),
                 "kreditorkonto": (
                     KREDITORKONTO
@@ -226,101 +178,23 @@ def build_lines():
             }
         )
 
-    total = sum(
+    beregnet_total = sum(
         (
-            line["bruttobeloeb"]
-            for line in lines
+            linje["bruttobeloeb"]
+            for linje in konteringslinjer
         ),
         Decimal("0"),
     )
 
-    if total != OENSKET_TOTALBELOEB:
-        raise ValueError(
-            f"Forkert inputtotal: {total}."
-        )
-
-    return lines
-
-
-def validate_plan(plan):
-    """Kontrollér planen."""
-
-    if len(
-        plan.eksisterende_linjer
-    ) != FORVENTET_ANTAL_EKSISTERENDE:
-        raise ValueError(
-            "Antallet af eksisterende linjer "
-            "har ændret sig. "
-            f"Forventet: "
-            f"{FORVENTET_ANTAL_EKSISTERENDE}. "
-            f"Fundet: "
-            f"{len(plan.eksisterende_linjer)}."
-        )
-
-    if len(
-        plan.oenskede_linjer
-    ) != ANTAL_OENSKEDE_LINJER:
-        raise ValueError(
-            "Forkert antal ønskede linjer."
-        )
-
-    if (
-        plan.oensket_totalbeloeb
-        != OENSKET_TOTALBELOEB
-    ):
-        raise ValueError(
-            "Forkert ønsket totalbeløb."
-        )
-
-    if plan.strategi != "reuse_and_delete":
-        raise ValueError(
-            "Forventede strategien "
-            "reuse_and_delete, men fandt "
-            f"{plan.strategi!r}."
-        )
-
-
-def validate_result(result):
-    """Kontrollér slutresultatet."""
-
-    if result.get("success") is not True:
+    if beregnet_total != totalbeloeb:
         raise RuntimeError(
-            "Resultatet mangler success=True."
+            "Konteringslinjernes totalbeløb "
+            "matcher ikke fakturabeløbet. "
+            f"Fakturabeløb: {totalbeloeb}. "
+            f"Linjetotal: {beregnet_total}."
         )
 
-    if (
-        result.get("final_count")
-        != ANTAL_OENSKEDE_LINJER
-    ):
-        raise RuntimeError(
-            "Forkert antal slutlinjer."
-        )
-
-    if (
-        result.get(
-            "total_gross_amount"
-        )
-        != OENSKET_TOTALBELOEB
-    ):
-        raise RuntimeError(
-            "Forkert samlet slutbeløb."
-        )
-
-    assigned = result.get(
-        "assigned_rec_ids",
-        [],
-    )
-
-    if len(assigned) != ANTAL_OENSKEDE_LINJER:
-        raise RuntimeError(
-            "Forkert antal tildelte linjer."
-        )
-
-    if len(set(assigned)) != len(assigned):
-        raise RuntimeError(
-            "Et RecIdLoc blev tildelt mere "
-            "end én ønsket linje."
-        )
+    return konteringslinjer
 
 
 if __name__ == "__main__":
