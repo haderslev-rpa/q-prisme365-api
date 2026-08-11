@@ -2,8 +2,13 @@
 
 from decimal import Decimal
 
+from q_prisme365_api.api_client import initialiser_prisme
 from q_prisme365_api.functionality.faktura_kontering import (
     konter_faktura,
+)
+
+initialiser_prisme(
+    credential_name="API_PRISME365_1"
 )
 
 
