@@ -13,6 +13,9 @@ from typing import Any
 from q_prisme365_api.api_client import get
 from q_prisme365_api.api_client import patch
 from q_prisme365_api.api_client import post
+from q_prisme365_api.functionality.dokumenter import (
+    search_dokumenter,
+)
 
 from q_prisme365_api.exceptions import (
     PrismeNotFoundError,
@@ -61,6 +64,10 @@ def search_fakturaer(
     fakturabeskrivelse: str | None = None,
     hent_detaljer: bool = True,
     hent_dokumenter: bool = False,
+    hent_dokumentplacering: bool = True,
+    dokument_domain_suffix: str | None = (
+        "prisme-365.dk"
+    ),
     top: int = DEFAULT_TOP,
 ) -> list[dict[str, Any]]:
     """
@@ -75,34 +82,41 @@ def search_fakturaer(
     Detaljeret opslag:
         VendInvoiceInfoTableDatasEntity_FUJ
 
+    Dokumentopslag:
+        DocuRefDatasEntity_FUJ
+
+    Dokumentinformation:
+        DocuValueDatasEntity_FUJ
+
     Fakturaer med status Draft frasorteres
     direkte i Prisme med D365-enum-filter.
+
+    Når hent_dokumenter er True:
+
+    1. Fakturadetaljerne hentes automatisk.
+    2. RecIdLoc læses fra detaljerne.
+    3. Dokumenter søges med:
+       RefCompanyId = had
+       RefTableId = 6084
+       RefRecId = fakturaens RecIdLoc
+    4. Notater og fysiske filer returneres.
+    5. Fysiske filer kan udvides med filnavn
+       og dokumentsti.
 
     Args:
         godkender_initialer:
             Filter på ApproverPersonnelNumber.
 
-            Eksempel:
-                DIRUJO
-
         afdeling:
             Afdeling på præcis 12 cifre.
-
-            Eksempel:
-                100201010000
-
-            Filterværdien bliver:
-                100201010000----
 
         leverandoernummer:
             Filter på VendorAccount.
 
-            Eksempel:
-                000003
-
         oprettet_dato_start:
-            Hent fakturaer med InvoiceReceivedDate
-            fra og med den angivne dato.
+            Hent fakturaer med
+            InvoiceReceivedDate fra og med
+            den angivne dato.
 
         header_reference:
             Fakturaens unikke HeaderReference.
@@ -111,12 +125,23 @@ def search_fakturaer(
             Filter på InvoiceDescription.
 
         hent_detaljer:
-            Hvis True hentes detaljer fra
+            True tilføjer oplysninger fra
             VendInvoiceInfoTableDatasEntity_FUJ.
 
         hent_dokumenter:
-            Reserveret til automatisk hentning
-            af vedhæftede dokumenter.
+            True henter dokumenter og notater,
+            som er tilknyttet fakturaen.
+
+        hent_dokumentplacering:
+            True henter filnavn og filplacering
+            for dokumenter med ValueRecId.
+
+        dokument_domain_suffix:
+            Valgfrit domæne til dokumentets
+            UNC-sti.
+
+            Standard:
+                prisme-365.dk
 
         top:
             Maksimalt antal fakturaer.
@@ -129,6 +154,33 @@ def search_fakturaer(
         top,
         "top",
     )
+
+    if not isinstance(
+        hent_detaljer,
+        bool,
+    ):
+        raise TypeError(
+            "hent_detaljer skal være "
+            "True eller False."
+        )
+
+    if not isinstance(
+        hent_dokumenter,
+        bool,
+    ):
+        raise TypeError(
+            "hent_dokumenter skal være "
+            "True eller False."
+        )
+
+    if not isinstance(
+        hent_dokumentplacering,
+        bool,
+    ):
+        raise TypeError(
+            "hent_dokumentplacering skal være "
+            "True eller False."
+        )
 
     # VendorInvoiceReviewStatus er en
     # Dynamics 365-enum, ikke almindelig tekst.
@@ -249,7 +301,9 @@ def search_fakturaer(
         endpoint,
     )
 
-    response = get(endpoint)
+    response = get(
+        endpoint
+    )
 
     rows = _normalize_list_response(
         response,
@@ -271,10 +325,12 @@ def search_fakturaer(
 
         if review_status.casefold() == "draft":
             logger.warning(
-                "Prisme returnerede en Draft-faktura, "
-                "selv om Draft var frasorteret i "
+                "Prisme returnerede en "
+                "Draft-faktura, selv om Draft "
+                "var frasorteret i "
                 "OData-filteret"
             )
+
             continue
 
         filtered_rows.append(
@@ -295,31 +351,104 @@ def search_fakturaer(
             )
         )
 
-        if hent_detaljer:
-            reference = normalized_invoice.get(
-                "HeaderReference"
+        reference = normalized_invoice.get(
+            "HeaderReference"
+        )
+
+        details = None
+
+        # Dokumentopslaget kræver fakturaens
+        # RecIdLoc fra detailentiteten.
+        #
+        # Derfor hentes detaljerne også, når
+        # hent_detaljer=False, men
+        # hent_dokumenter=True.
+        should_load_details = (
+            hent_detaljer
+            or hent_dokumenter
+        )
+
+        if (
+            should_load_details
+            and reference
+        ):
+            details = get_faktura_detaljer(
+                header_reference=str(
+                    reference
+                )
             )
 
-            if reference:
-                details = get_faktura_detaljer(
-                    header_reference=reference
+        if (
+            hent_detaljer
+            and details is not None
+        ):
+            _apply_detailed_information(
+                normalized_invoice,
+                details,
+            )
+
+        dokumenter = []
+
+        if hent_dokumenter:
+            if details is None:
+                raise ValueError(
+                    "Dokumenterne kunne ikke "
+                    "hentes, fordi fakturaens "
+                    "detaljer ikke blev fundet. "
+                    "HeaderReference: "
+                    f"{reference!r}."
                 )
 
-                _apply_detailed_information(
-                    normalized_invoice,
-                    details,
+            raw_rec_id = details.get(
+                "RecIdLoc"
+            )
+
+            if raw_rec_id in (
+                None,
+                "",
+                0,
+                "0",
+            ):
+                raise ValueError(
+                    "Dokumenterne kunne ikke "
+                    "hentes, fordi fakturaens "
+                    "RecIdLoc mangler. "
+                    "HeaderReference: "
+                    f"{reference!r}."
                 )
+
+            faktura_rec_id = (
+                _validate_positive_integer(
+                    raw_rec_id,
+                    "fakturaens RecIdLoc",
+                )
+            )
+
+            logger.info(
+                "Henter dokumenter for "
+                "HeaderReference %s og "
+                "RecIdLoc %s",
+                reference,
+                faktura_rec_id,
+            )
+
+            dokumenter = search_dokumenter(
+                ref_rec_id=faktura_rec_id,
+                tabel=(
+                    "ventende_kreditorfaktura"
+                ),
+                hent_dokumentplacering=(
+                    hent_dokumentplacering
+                ),
+                domain_suffix=(
+                    dokument_domain_suffix
+                ),
+                top=1000,
+            )
 
         normalized_invoice[
             "Vedhæftede dokumenter"
-        ] = []
-
-        if hent_dokumenter:
-            logger.warning(
-                "hent_dokumenter=True er valgt, "
-                "men dokumenterne hentes endnu ikke "
-                "automatisk i search_fakturaer"
-            )
+        ] = dokumenter
 
         results.append(
             normalized_invoice
