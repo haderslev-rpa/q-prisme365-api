@@ -1,4 +1,4 @@
-"""Live-test af dokumenter på en faktura."""
+"""Vis præcist output fra search_dokumenter."""
 
 from pprint import pprint
 
@@ -6,7 +6,6 @@ from q_prisme365_api.api_client import (
     initialiser_prisme,
 )
 from q_prisme365_api.functionality.dokumenter import (
-    get_dokumentinformation,
     search_dokumenter,
 )
 
@@ -15,133 +14,244 @@ from q_prisme365_api.functionality.dokumenter import (
 # CREDENTIAL
 # ------------------------------------------------------------
 
+# Navnet på credential-posten i
+# Automation Server.
 CREDENTIAL_NAME = "API_PRISME365_1"
 
 
 # ------------------------------------------------------------
-# TESTFAKTURA
+# VÆLG SØGETYPE
 # ------------------------------------------------------------
 
-# RecIdLoc fra raw_details på faktura 000684546.
+# Tilladte værdier:
+#
+# "ventende_kreditorfaktura"
+#     Søger dokumenter på en faktura.
+#     Bruger RefTableId 6084.
+#
+# "cpr_cvr"
+#     Søger dokumenter på CPR/CVR.
+#     Bruger RefTableId 27526.
+TABEL = "ventende_kreditorfaktura"
+
+
+# ------------------------------------------------------------
+# FAKTURASØGNING
+# ------------------------------------------------------------
+
+# Fakturaens RecIdLoc.
+#
+# Bruges kun, når:
+# TABEL = "ventende_kreditorfaktura"
 FAKTURA_REC_ID_LOC = 5637561949
 
 
 # ------------------------------------------------------------
-# DOKUMENTINDSTILLINGER
+# CPR/CVR-SØGNING
 # ------------------------------------------------------------
 
-# True henter også filnavn og filplacering
-# via dokumentets ValueRecId.
+# CPR- eller CVR-værdi.
+#
+# Bruges kun, når:
+# TABEL = "cpr_cvr"
+CPR_CVR = None
+
+# Eksempel:
+# CPR_CVR = "29189757"
+
+
+# ------------------------------------------------------------
+# DOKUMENTPLACERING
+# ------------------------------------------------------------
+
+# True:
+#     Fysiske dokumenter udvides med
+#     Dokumentnavn, Dokumentsti, FilId og
+#     AccessInformationRaw.
+#
+# False:
+#     Dokumentreferencerne returneres stadig,
+#     men Dokumentsti bliver None, og
+#     DokumentplaceringStatus bliver
+#     "ikke_hentet" for fysiske filer.
 HENT_DOKUMENTPLACERING = True
 
+
+# Domænet føjes til servernavnet, når en
+# file-URI konverteres til en UNC-sti.
 DOMAIN_SUFFIX = "prisme-365.dk"
 
+
+# ------------------------------------------------------------
+# RÅDATA
+# ------------------------------------------------------------
+
+# False:
+#     Returnerer kun det normaliserede og
+#     dokumenterede output.
+#
+# True:
+#     Tilføjer også feltet raw med de
+#     oprindelige Prisme-data.
+INKLUDER_RAW = False
+
+
+# ------------------------------------------------------------
+# ANTAL
+# ------------------------------------------------------------
+
+# Maksimalt antal dokumenter.
 TOP = 100
 
 
 def main() -> None:
-    """Hent fakturaens dokumenter."""
+    """
+    Initialisér Prisme, hent dokumenter og
+    udskriv præcis funktionens returværdi.
+
+    Testen:
+        ændrer ikke dokumenterne
+        omdøber ikke felter
+        fjerner ikke felter
+        tilføjer ikke felter
+        foretager ikke ekstra dokumentopslag
+    """
 
     initialiser_prisme(
         credential_name=CREDENTIAL_NAME
     )
 
-    print()
-    print("=" * 70)
-    print("DOKUMENTER PÅ FAKTURA")
-    print("=" * 70)
-    print()
-    print(
-        "Fakturaens RecIdLoc:",
-        FAKTURA_REC_ID_LOC,
-    )
+    søgeargumenter = byg_søgeargumenter()
 
     dokumenter = search_dokumenter(
-        ref_rec_id=FAKTURA_REC_ID_LOC,
-        tabel="ventende_kreditorfaktura",
-        hent_dokumentplacering=(
-            HENT_DOKUMENTPLACERING
-        ),
-        domain_suffix=DOMAIN_SUFFIX,
-        top=TOP,
+        **søgeargumenter
     )
 
-    print()
-    print(
-        "Antal dokumenter:",
-        len(dokumenter),
-    )
-
-    if not dokumenter:
-        print()
-        print(
-            "Der blev ikke fundet dokumenter "
-            "på fakturaens RecIdLoc."
-        )
-        return
-
-    for nummer, dokument in enumerate(
+    # Dette er den eneste udskrift.
+    #
+    # pprint ændrer ikke dataene.
+    # Funktionen viser blot returværdien
+    # i et mere læsbart format.
+    pprint(
         dokumenter,
-        start=1,
+        sort_dicts=False,
+        width=120,
+    )
+
+
+def byg_søgeargumenter() -> dict:
+    """
+    Byg argumenterne til search_dokumenter.
+
+    Funktionen sikrer, at testen enten søger
+    på en faktura eller på CPR/CVR.
+    """
+
+    if TABEL == "ventende_kreditorfaktura":
+        faktura_rec_id = (
+            kontrollér_positivt_heltal(
+                FAKTURA_REC_ID_LOC,
+                "FAKTURA_REC_ID_LOC",
+            )
+        )
+
+        return {
+            "ref_rec_id": faktura_rec_id,
+            "tabel": (
+                "ventende_kreditorfaktura"
+            ),
+            "hent_dokumentplacering": (
+                HENT_DOKUMENTPLACERING
+            ),
+            "domain_suffix": DOMAIN_SUFFIX,
+            "inkluder_raw": INKLUDER_RAW,
+            "top": TOP,
+        }
+
+    if TABEL == "cpr_cvr":
+        cpr_cvr = kontrollér_tekst(
+            CPR_CVR,
+            "CPR_CVR",
+        )
+
+        return {
+            "tabel": "cpr_cvr",
+            "cpr_cvr": cpr_cvr,
+            "hent_dokumentplacering": (
+                HENT_DOKUMENTPLACERING
+            ),
+            "domain_suffix": DOMAIN_SUFFIX,
+            "inkluder_raw": INKLUDER_RAW,
+            "top": TOP,
+        }
+
+    raise ValueError(
+        "TABEL har en ugyldig værdi. "
+        "Tilladte værdier er "
+        "'ventende_kreditorfaktura' "
+        "og 'cpr_cvr'. "
+        f"Fundet: {TABEL!r}."
+    )
+
+
+def kontrollér_positivt_heltal(
+    value: object,
+    variable_name: str,
+) -> int:
+    """Kontrollér et positivt heltal."""
+
+    if isinstance(
+        value,
+        bool,
     ):
-        print()
-        print("-" * 70)
-        print(
-            f"Dokument {nummer}"
-        )
-        print("-" * 70)
-        pprint(
-            dokument,
-            sort_dicts=False,
+        raise TypeError(
+            f"{variable_name} skal være "
+            "et positivt heltal."
         )
 
-        value_rec_id = dokument.get(
-            "ValueRecId"
+    try:
+        integer_value = int(
+            value
+        )
+    except (
+        TypeError,
+        ValueError,
+    ) as error:
+        raise TypeError(
+            f"{variable_name} skal være "
+            "et positivt heltal."
+        ) from error
+
+    if integer_value <= 0:
+        raise ValueError(
+            f"{variable_name} skal være "
+            "større end 0."
         )
 
-        if value_rec_id in (
-            None,
-            "",
-            0,
-            "0",
-        ):
-            print()
-            print(
-                "Dokumentet har ingen fysisk "
-                "fil, fordi ValueRecId mangler."
-            )
-            continue
+    return integer_value
 
-        print()
-        print(
-            "ValueRecId:",
-            value_rec_id,
+
+def kontrollér_tekst(
+    value: object,
+    variable_name: str,
+) -> str:
+    """Kontrollér en obligatorisk tekstværdi."""
+
+    if value is None:
+        raise ValueError(
+            f"{variable_name} skal udfyldes."
         )
 
-        # Dette direkte opslag er lidt
-        # overflødigt, når
-        # HENT_DOKUMENTPLACERING=True.
-        #
-        # Det bruges her bevidst til at teste,
-        # at DocuValueDatasEntity_FUJ også
-        # virker korrekt.
-        dokumentinformation = (
-            get_dokumentinformation(
-                value_rec_id=int(
-                    value_rec_id
-                ),
-                domain_suffix=DOMAIN_SUFFIX,
-            )
+    text_value = str(
+        value
+    ).strip()
+
+    if not text_value:
+        raise ValueError(
+            f"{variable_name} skal udfyldes."
         )
 
-        print()
-        print(
-            "Direkte dokumentinformation:"
-        )
-        pprint(
-            dokumentinformation,
-            sort_dicts=False,
-        )
+    return text_value
 
 
 if __name__ == "__main__":

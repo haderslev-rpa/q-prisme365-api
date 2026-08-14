@@ -450,11 +450,86 @@ def search_fakturaer(
             "Vedhæftede dokumenter"
         ] = dokumenter
 
+        normalized_invoice[
+            "OIOUBL-dokument"
+        ] = _find_single_oioubl_document(
+            dokumenter=dokumenter,
+            header_reference=reference,
+        )
+
         results.append(
             normalized_invoice
         )
 
     return results
+
+def _find_single_oioubl_document(
+    dokumenter: list[dict[str, Any]],
+    header_reference: Any,
+) -> dict[str, Any] | None:
+    """
+    Find fakturaens entydige OIOUBL-dokument.
+
+    Regler:
+
+        Ingen fund:
+            Returnér None.
+
+        Præcis ét fund:
+            Returnér dokumentet.
+
+        Flere fund:
+            Rejs en kontrolleret fejl.
+
+    Der vælges aldrig et tilfældigt dokument.
+    """
+
+    oioubl_documents = []
+
+    for document in dokumenter:
+        if not isinstance(
+            document,
+            dict,
+        ):
+            continue
+
+        type_id = str(
+            document.get(
+                "TypeId",
+                "",
+            )
+            or ""
+        ).strip()
+
+        if type_id.casefold() == "oioubl":
+            oioubl_documents.append(
+                document
+            )
+
+    if not oioubl_documents:
+        return None
+
+    if len(oioubl_documents) == 1:
+        return oioubl_documents[0]
+
+    document_ids = [
+        document.get(
+            "DocumentId"
+        )
+        for document in oioubl_documents
+    ]
+
+    raise ValueError(
+        "Fakturaen har flere "
+        "OIOUBL-dokumenter. "
+        "Der vælges ikke automatisk mellem "
+        "flere dokumenter. "
+        f"HeaderReference: "
+        f"{header_reference!r}. "
+        f"Antal: {len(oioubl_documents)}. "
+        f"DocumentId-værdier: "
+        f"{document_ids!r}."
+    )
 
 def get_faktura_detaljer(
     header_reference: str,
