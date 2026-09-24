@@ -14,7 +14,7 @@ from q_prisme365_api.functionality.fakturaer import (
 
 CREDENTIAL_NAME = "API_PRISME365_1"
 
-HEADER_REFERENCE = "000684819"
+HEADER_REFERENCE = "000714530"
 
 HENT_DETALJER = True
 HENT_DOKUMENTER = True

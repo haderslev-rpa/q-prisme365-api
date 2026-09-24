@@ -43,7 +43,7 @@ TABEL = "ventende_kreditorfaktura"
 #
 # Bruges kun, når:
 # TABEL = "ventende_kreditorfaktura"
-FAKTURA_REC_ID_LOC = 5637561949
+FAKTURA_REC_ID_LOC = 5637578070
 
 
 # ------------------------------------------------------------
