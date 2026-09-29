@@ -23,59 +23,74 @@ DEFAULT_TOP = 100000
 
 
 def hent_kreditorfakturaer(
-    fakturadato_fra: date,
-    fakturadato_til: date,
+    bogfoeringsdato_fra: date,
+    bogfoeringsdato_til: date,
     voucher_prefix: str | None = "EFAK-",
     data_area_id: str = DEFAULT_COMPANY_ID,
     top: int = DEFAULT_TOP,
     inkluder_raw: bool = False,
 ) -> list[dict[str, Any]]:
-    """Hent bogførte kreditorfakturaer i et datointerval.
+    """Hent bogførte kreditorfakturaer via bogføringsdato.
 
-    Intervallet er halvåbent:
+    Ugeafgrænsningen foretages på:
 
-        fakturadato_fra er inklusive
-        fakturadato_til er eksklusive
+        VendTrans.TransDate
+
+    TransDate er kreditorposteringens bogføringsdato og bruges
+    derfor til at bestemme, hvilket uge-item fakturaen tilhører.
+
+    DocumentDate returneres fortsat som fakturadato og bruges
+    senere til at matche kreditorposteringen med den oprindelige
+    faktura i VendInvoiceInfo.
+
+    Datointervallet er halvåbent:
+
+        bogfoeringsdato_fra er inklusive
+        bogfoeringsdato_til er eksklusive
 
     Prisme filtreres server-side på:
 
         dataAreaId
-        DocumentDate fra
-        DocumentDate til
+        TransDate fra
+        TransDate til
 
-    Følgende filtreres lokalt i Python:
+    Følgende kriterier filtreres lokalt i Python:
 
         TransType = Purch
         Invoice skal være udfyldt
         Voucher skal begynde med voucher_prefix
 
-    Voucher filtreres lokalt, fordi startswith() ikke
-    understøttes af OData-laget for denne Prisme-entitet.
+    Voucher filtreres lokalt, fordi Prismes OData-lag ikke
+    understøtter startswith() på Voucher i denne entitet.
 
     Args:
-        fakturadato_fra:
-            Første fakturadato, inklusive.
+        bogfoeringsdato_fra:
+            Første bogføringsdato, inklusive.
 
-        fakturadato_til:
-            Slutdato, eksklusive.
+        bogfoeringsdato_til:
+            Intern slutdato, eksklusive.
+
+            Hvis uge-itemet eksempelvis dækker mandag til
+            søndag, skal værdien være den efterfølgende mandag.
 
         voucher_prefix:
             Valgfrit præfiks til Voucher.
 
             Standard:
-                "EFAK-"
 
-            Hvis værdien er None eller tom tekst,
-            filtreres der ikke på Voucher.
+                EFAK-
+
+            None eller tom tekst fjerner voucherfilteret.
 
         data_area_id:
             Selskabet i Prisme.
 
             Standard:
-                "had"
+
+                had
 
         top:
-            Maksimalt antal rækker, der anmodes om.
+            Maksimalt antal rækker i API-resultatet.
 
         inkluder_raw:
             True tilføjer den rå Prisme-række under:
@@ -106,55 +121,57 @@ def hent_kreditorfakturaer(
             }
         ]
     """
-    dato_fra = _validate_date(
-        fakturadato_fra,
-        "fakturadato_fra",
-    )
-    dato_til = _validate_date(
-        fakturadato_til,
-        "fakturadato_til",
+    date_from = _validate_date(
+        bogfoeringsdato_fra,
+        "bogfoeringsdato_fra",
     )
 
-    if dato_fra >= dato_til:
+    date_to = _validate_date(
+        bogfoeringsdato_til,
+        "bogfoeringsdato_til",
+    )
+
+    if date_from >= date_to:
         raise ValueError(
-            "fakturadato_fra skal være før "
-            "fakturadato_til."
+            "bogfoeringsdato_fra skal være før "
+            "bogfoeringsdato_til."
         )
 
     company = _required_text(
         data_area_id,
         "data_area_id",
     )
+
     validated_top = _positive_int(
         top,
         "top",
     )
+
     clean_voucher_prefix = _optional_text(
         voucher_prefix
     )
 
-    # Voucher-præfikset er bevidst ikke med i
-    # OData-filteret. Prisme understøtter ikke:
+    # Ugeafgrænsningen skal ske på kreditorposteringens
+    # bogføringsdato, TransDate.
     #
-    #     startswith(Voucher, 'EFAK-')
-    #
-    # Filtreringen udføres derfor lokalt nedenfor.
+    # DocumentDate er fakturadatoen og bruges senere som
+    # en del af matchnøglen til VendInvoiceInfo.
     endpoint = (
         f"{VEND_TRANS_ENDPOINT}"
         f"?$top={validated_top}"
         "&$filter="
         f"dataAreaId eq '{_escape(company)}'"
         " and "
-        f"DocumentDate ge {_odata_datetime(dato_fra)}"
+        f"TransDate ge {_odata_datetime(date_from)}"
         " and "
-        f"DocumentDate lt {_odata_datetime(dato_til)}"
+        f"TransDate lt {_odata_datetime(date_to)}"
     )
 
     logger.info(
-        "Henter kreditorfakturaer fra %s "
-        "til før %s",
-        dato_fra,
-        dato_til,
+        "Henter kreditorfakturaer med TransDate "
+        "fra %s til før %s",
+        date_from,
+        date_to,
     )
 
     logger.debug(
@@ -226,7 +243,9 @@ def hent_kreditorfakturaer(
     logger.info(
         "Kreditorfakturaudtrækket returnerede "
         "%s fakturaer efter lokal filtrering",
-        len(result),
+        len(
+            result
+        ),
     )
 
     return result
