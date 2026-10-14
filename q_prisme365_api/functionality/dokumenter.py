@@ -171,40 +171,164 @@ def get_dokumentinformation(value_rec_id: int, domain_suffix: str | None = None)
     )
 
 
-def _normalize_document_reference(reference_row: dict[str, Any], hent_dokumentplacering: bool,
-                                  domain_suffix: str | None, inkluder_raw: bool) -> dict[str, Any]:
-    value_id = _optional_positive_integer(reference_row.get("ValueRecId"), "ValueRecId")
-    type_id = str(reference_row.get("TypeId") or "").strip()
-    name = str(reference_row.get("Name") or "").strip()
-    path = None; access = ""; file_id = ""; value_raw = None
+def _normalize_document_reference(
+    reference_row: dict[str, Any],
+    hent_dokumentplacering: bool,
+    domain_suffix: str | None,
+    inkluder_raw: bool,
+) -> dict[str, Any]:
+    """
+    Normalisér en dokumentreference.
+
+    Når dokumentplaceringen hentes, tilføjes også oplysninger
+    fra DocuValue, herunder DocuStyleType og OIOUBLProfile.
+
+    DocuStyleType bruges blandt andet til at skelne mellem:
+        Invoice_2:
+            Den egentlige faktura.
+
+        UtilityStatement_v2:
+            Fakturaspecifikationen.
+    """
+    value_id = _optional_positive_integer(
+        reference_row.get("ValueRecId"),
+        "ValueRecId",
+    )
+
+    type_id = str(
+        reference_row.get("TypeId") or ""
+    ).strip()
+
+    name = str(
+        reference_row.get("Name") or ""
+    ).strip()
+
+    path = None
+    access = ""
+    file_id = ""
+    value_raw = None
+    docu_style_type = ""
+    oioubl_profile = ""
+
     if value_id is None:
         status = DOCUMENT_LOCATION_NOT_RELEVANT
+
     elif not hent_dokumentplacering:
         status = DOCUMENT_LOCATION_NOT_FETCHED
+
     else:
-        info = get_dokumentinformation(value_id, domain_suffix)
-        name = info.original_file_name or name
-        path, access, file_id, value_raw = info.document_path, info.access_information_raw, info.file_id, dict(info.raw)
-        status = DOCUMENT_LOCATION_FETCHED if path else DOCUMENT_LOCATION_MISSING
-    original_by = str(reference_row.get("OriginallyCreatedBy") or "").strip()
-    created_by = original_by or str(reference_row.get("CreatedByLoc") or "").strip()
+        info = get_dokumentinformation(
+            value_id,
+            domain_suffix,
+        )
+
+        name = (
+            info.original_file_name
+            or name
+        )
+
+        path = info.document_path
+        access = info.access_information_raw
+        file_id = info.file_id
+        value_raw = dict(info.raw)
+
+        docu_style_type = str(
+            value_raw.get("DocuStyleType") or ""
+        ).strip()
+
+        oioubl_profile = str(
+            value_raw.get("OIOUBLProfile") or ""
+        ).strip()
+
+        status = (
+            DOCUMENT_LOCATION_FETCHED
+            if path
+            else DOCUMENT_LOCATION_MISSING
+        )
+
+    original_by = str(
+        reference_row.get(
+            "OriginallyCreatedBy"
+        )
+        or ""
+    ).strip()
+
+    created_by = (
+        original_by
+        or str(
+            reference_row.get("CreatedByLoc")
+            or ""
+        ).strip()
+    )
+
     result = {
-        "DocumentId": str(reference_row.get("DocumentId") or "").strip(),
-        "DokumentReferenceRecId": _optional_positive_integer(reference_row.get("RecIdLoc"), "RecIdLoc"),
-        "ReferenceRecId": _optional_positive_integer(reference_row.get("RefRecId"), "RefRecId"),
-        "ValueRecId": value_id, "FilId": file_id,
-        "RefTableId": _optional_positive_integer(reference_row.get("RefTableId"), "RefTableId"),
-        "TypeId": type_id, "Dokumentnavn": name, "Dokumentsti": path,
-        "AccessInformationRaw": access, "ErFysiskFil": value_id is not None,
-        "ErNotat": type_id.casefold() == "notat", "DokumentplaceringStatus": status,
-        "Notat": str(reference_row.get("Notes") or "").strip(),
-        "OprettetDato": reference_row.get("CreatedOn"), "OprettetAf": created_by,
-        "OriginallyCreatedBy": original_by, "ModifiedDateTimeLoc": reference_row.get("ModifiedDateTimeLoc"),
-        "ModifiedByLoc": str(reference_row.get("ModifiedByLoc") or "").strip(),
-        "LegalEntity": str(reference_row.get("LegalEntity") or "").strip(),
+        "DocumentId": str(
+            reference_row.get("DocumentId")
+            or ""
+        ).strip(),
+        "DokumentReferenceRecId": (
+            _optional_positive_integer(
+                reference_row.get("RecIdLoc"),
+                "RecIdLoc",
+            )
+        ),
+        "ReferenceRecId": (
+            _optional_positive_integer(
+                reference_row.get("RefRecId"),
+                "RefRecId",
+            )
+        ),
+        "ValueRecId": value_id,
+        "FilId": file_id,
+        "RefTableId": (
+            _optional_positive_integer(
+                reference_row.get("RefTableId"),
+                "RefTableId",
+            )
+        ),
+        "TypeId": type_id,
+        "Dokumentnavn": name,
+        "Dokumentsti": path,
+        "DocuStyleType": docu_style_type,
+        "OIOUBLProfile": oioubl_profile,
+        "AccessInformationRaw": access,
+        "ErFysiskFil": value_id is not None,
+        "ErNotat": (
+            type_id.casefold() == "notat"
+        ),
+        "DokumentplaceringStatus": status,
+        "Notat": str(
+            reference_row.get("Notes")
+            or ""
+        ).strip(),
+        "OprettetDato": reference_row.get(
+            "CreatedOn"
+        ),
+        "OprettetAf": created_by,
+        "OriginallyCreatedBy": original_by,
+        "ModifiedDateTimeLoc": (
+            reference_row.get(
+                "ModifiedDateTimeLoc"
+            )
+        ),
+        "ModifiedByLoc": str(
+            reference_row.get(
+                "ModifiedByLoc"
+            )
+            or ""
+        ).strip(),
+        "LegalEntity": str(
+            reference_row.get("LegalEntity")
+            or ""
+        ).strip(),
     }
+
     if inkluder_raw:
-        result["raw"] = {"reference": dict(reference_row), "value": value_raw}
+        result["raw"] = {
+            "reference": dict(reference_row),
+            "value": value_raw,
+        }
+
     return result
 
 

@@ -468,22 +468,31 @@ def _find_single_oioubl_document(
     header_reference: Any,
 ) -> dict[str, Any] | None:
     """
-    Find fakturaens entydige OIOUBL-dokument.
+    Find fakturaens egentlige OIOUBL-dokument.
+
+    Et fakturabilag kan indeholde flere dokumenter med
+    TypeId 'OIOUBL', eksempelvis:
+
+        Invoice_2:
+            Den egentlige faktura.
+
+        UtilityStatement_v2:
+            Fakturaspecifikationen.
 
     Regler:
-
-        Ingen fund:
+        Ingen OIOUBL-dokumenter:
             Returnér None.
 
-        Præcis ét fund:
+        Præcis ét OIOUBL-dokument:
             Returnér dokumentet.
 
-        Flere fund:
+        Flere OIOUBL-dokumenter:
+            Vælg det entydige dokument med
+            DocuStyleType 'Invoice_2'.
+
+        Flere Invoice_2-dokumenter eller ingen Invoice_2:
             Rejs en kontrolleret fejl.
-
-    Der vælges aldrig et tilfældigt dokument.
     """
-
     oioubl_documents = []
 
     for document in dokumenter:
@@ -494,11 +503,7 @@ def _find_single_oioubl_document(
             continue
 
         type_id = str(
-            document.get(
-                "TypeId",
-                "",
-            )
-            or ""
+            document.get("TypeId") or ""
         ).strip()
 
         if type_id.casefold() == "oioubl":
@@ -512,23 +517,73 @@ def _find_single_oioubl_document(
     if len(oioubl_documents) == 1:
         return oioubl_documents[0]
 
-    document_ids = [
-        document.get(
-            "DocumentId"
-        )
+    invoice_documents = []
+
+    for document in oioubl_documents:
+        docu_style_type = str(
+            document.get(
+                "DocuStyleType"
+            )
+            or ""
+        ).strip()
+
+        if (
+            docu_style_type.casefold()
+            == "invoice_2"
+        ):
+            invoice_documents.append(
+                document
+            )
+
+    if len(invoice_documents) == 1:
+        return invoice_documents[0]
+
+    document_information = [
+        {
+            "DocumentId": document.get(
+                "DocumentId"
+            ),
+            "TypeId": document.get(
+                "TypeId"
+            ),
+            "DocuStyleType": document.get(
+                "DocuStyleType"
+            ),
+            "OIOUBLProfile": document.get(
+                "OIOUBLProfile"
+            ),
+            "Dokumentnavn": document.get(
+                "Dokumentnavn"
+            ),
+            "ValueRecId": document.get(
+                "ValueRecId"
+            ),
+        }
         for document in oioubl_documents
     ]
 
+    if not invoice_documents:
+        raise ValueError(
+            "Fakturaen har flere OIOUBL-dokumenter, "
+            "men ingen af dem har DocuStyleType "
+            "'Invoice_2'. "
+            "Der vælges derfor ikke automatisk. "
+            f"HeaderReference: "
+            f"{header_reference!r}. "
+            f"Dokumenter: "
+            f"{document_information!r}."
+        )
+
     raise ValueError(
-        "Fakturaen har flere "
-        "OIOUBL-dokumenter. "
-        "Der vælges ikke automatisk mellem "
-        "flere dokumenter. "
+        "Fakturaen har flere OIOUBL-dokumenter "
+        "med DocuStyleType 'Invoice_2'. "
+        "Fakturadokumentet er derfor ikke entydigt. "
         f"HeaderReference: "
         f"{header_reference!r}. "
-        f"Antal: {len(oioubl_documents)}. "
-        f"DocumentId-værdier: "
-        f"{document_ids!r}."
+        f"Antal Invoice_2-dokumenter: "
+        f"{len(invoice_documents)}. "
+        f"Dokumenter: "
+        f"{document_information!r}."
     )
 
 def get_faktura_detaljer(
